@@ -1,0 +1,167 @@
+CLASS_NAMES: ['backpack', 'drill', 'fire ext', 'survivor']
+
+# DATA_CONFIG:
+#    _BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset.yaml
+
+
+MODEL:
+    NAME: PointRCNN
+
+    VFE:
+        NAME: MeanVFE
+
+    BACKBONE_3D:
+        NAME: UNetV2
+        RETURN_ENCODED_TENSOR: False
+
+    POINT_HEAD:
+        NAME: PointIntraPartOffsetHead
+        CLS_FC: [128, 128]
+        PART_FC: [128, 128]
+        REG_FC: [128, 128]
+        CLASS_AGNOSTIC: False
+        USE_POINT_FEATURES_BEFORE_FUSION: False
+        TARGET_CONFIG:
+            GT_EXTRA_WIDTH: [0.2, 0.2, 0.2]
+            BOX_CODER: PointResidualCoder
+            BOX_CODER_CONFIG: {
+                'use_mean_size': True,
+                'mean_size_real': [
+                    [0.34234169, 0.25402579, 0.36423574],
+                    [0.25064996, 0.07078518, 0.25503292],
+                    [0.16389594, 0.12233697, 0.41647648],
+                    [1.30108714, 0.779422  , 0.75232275]
+                ],
+                'mean_size_airsim': [
+                    [0.25879874, 0.20892324, 0.31279414],
+                    [0.17615989, 0.06227565, 0.18958467],
+                    [0.16911035, 0.14591966, 0.3121567],
+                    [0.8534751 , 0.54508409, 0.5639489]
+                ]
+            }
+
+        LOSS_CONFIG:
+            LOSS_REG: WeightedSmoothL1Loss
+            LOSS_WEIGHTS: {
+                'point_cls_weight': 1.0,
+                'point_box_weight': 1.0,
+                'point_part_weight': 1.0,
+                'code_weights': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+            }
+            # LOSS_WEIGHTS: {
+            #     'point_cls_weight': 1.0,
+            #     'point_box_weight': 1.0,
+            #     'point_part_weight': 1.0,
+            #     'code_weights': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+            # }
+
+    ROI_HEAD:
+        NAME: PartA2FCHead
+        CLASS_AGNOSTIC: True
+
+        SHARED_FC: [256, 256, 256]
+        CLS_FC: [256, 256]
+        REG_FC: [256, 256]
+        DP_RATIO: 0.3
+        DISABLE_PART: True
+        SEG_MASK_SCORE_THRESH: 0.0
+
+        NMS_CONFIG:
+            TRAIN:
+                NMS_TYPE: nms_gpu
+                MULTI_CLASSES_NMS: False
+                NMS_PRE_MAXSIZE: 9000
+                NMS_POST_MAXSIZE: 512
+                NMS_THRESH: 0.8
+            TEST:
+                NMS_TYPE: nms_gpu
+                MULTI_CLASSES_NMS: False
+                NMS_PRE_MAXSIZE: 9000
+                NMS_POST_MAXSIZE: 100
+                NMS_THRESH: 0.85
+
+        ROI_AWARE_POOL:
+            # POOL_SIZE: 12
+            # NUM_FEATURES: 128
+            # MAX_POINTS_PER_VOXEL: 128
+
+            POOL_SIZE: 20
+            NUM_FEATURES: 64
+            MAX_POINTS_PER_VOXEL: 128
+
+
+        TARGET_CONFIG:
+            BOX_CODER: ResidualCoder
+            ROI_PER_IMAGE: 128
+            # how many foreground vs. background rois to sample
+            FG_RATIO: 0.5
+
+            SAMPLE_ROI_BY_EACH_CLASS: False
+            # whether to make labels 0/1 (cls) or 
+            # what more smooth for the iou of overlap in between bg and fg
+            # (called roi_iou)
+            CLS_SCORE_TYPE: roi_iou
+
+            # CLS_FG_THRESH: 0.75
+            # CLS_BG_THRESH: 0.25
+
+            CLS_FG_THRESH: 0.25
+            CLS_BG_THRESH: 0.15
+
+            # upper bound for easily-detected background examples
+            # CLS_BG_THRESH_LO: 0.1
+            CLS_BG_THRESH_LO: 0.05
+            # how much of the background that we sample should be difficult
+            # HARD_BG_RATIO: 0.8
+            HARD_BG_RATIO: 0.8
+
+            # regression foreground lower threshold
+            # REG_FG_THRESH: 0.65
+            REG_FG_THRESH: 0.25
+
+        LOSS_CONFIG:
+            CLS_LOSS: BinaryCrossEntropy
+            REG_LOSS: smooth-l1
+            CORNER_LOSS_REGULARIZATION: True
+            LOSS_WEIGHTS: {
+                'rcnn_cls_weight': 1.0,
+                'rcnn_reg_weight': 1.0,
+                'rcnn_corner_weight': 1.0,
+                'code_weights': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+            }
+
+    POST_PROCESSING:
+        RECALL_THRESH_LIST: [0.3, 0.5, 0.7]
+        SCORE_THRESH: 0.1
+        OUTPUT_RAW_SCORE: False
+
+        EVAL_METRIC: kitti
+
+        NMS_CONFIG:
+            MULTI_CLASSES_NMS: False
+            NMS_TYPE: nms_gpu
+            NMS_THRESH: 0.1
+            NMS_PRE_MAXSIZE: 4096
+            NMS_POST_MAXSIZE: 500
+
+
+OPTIMIZATION:
+    BATCH_SIZE_PER_GPU: 4
+    NUM_EPOCHS: 80
+
+    OPTIMIZER: adam_onecycle
+    LR: 0.003
+    WEIGHT_DECAY: 0.01
+    MOMENTUM: 0.9
+
+    MOMS: [0.95, 0.85]
+    PCT_START: 0.4
+    DIV_FACTOR: 10
+    DECAY_STEP_LIST: [35, 45]
+    LR_DECAY: 0.1
+    LR_CLIP: 0.0000001
+
+    LR_WARMUP: False
+    WARMUP_EPOCH: 1
+
+    GRAD_NORM_CLIP: 10
