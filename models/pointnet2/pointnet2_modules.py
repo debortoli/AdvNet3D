@@ -21,7 +21,6 @@ sys.path.append(BASE_DIR)
 import pointnet2_utils
 import pytorch_utils as pt_utils
 from typing import List
-import pdb
 import time
 import numpy as np
 
@@ -209,10 +208,6 @@ class PointnetSAModuleVotes(nn.Module):
         mlp_spec = mlp
         if use_xyz and len(mlp_spec)>0:
             mlp_spec[0] += 3
-        # if in_discriminator:
-        #     print('adjusting mlp_spec\n\n\n\n')
-        #     mlp_spec = [128, 64, 64, 128]
-        #     pdb.set_trace()
         self.mlp_module = pt_utils.SharedMLP(mlp_spec, bn=bn)
 
         #pointconv

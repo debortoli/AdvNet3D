@@ -5,7 +5,6 @@ import torch.nn.functional as F
 from ...ops.roiaware_pool3d import roiaware_pool3d_utils
 from ...utils import common_utils, loss_utils
 
-import pdb
 class PointHeadTemplate(nn.Module):
     def __init__(self, model_cfg, num_class):
         super().__init__()
@@ -139,14 +138,6 @@ class PointHeadTemplate(nn.Module):
         cls_weights = (negatives * negative_weighting + positives * positive_weighting).float()
         pos_normalizer = positives.sum(dim=0).float()
         cls_weights /= torch.clamp(pos_normalizer, min=1.0)
-
-        # percent_non_zero = (point_cls_labels > 0).sum().item() / float(point_cls_labels.shape[0])*100.
-        # equal = (torch.argmax(point_cls_preds, dim=1) == point_cls_labels)
-        # if (point_cls_labels>0).sum().item()==0: 
-        #     percent_equal = 0
-        # else:
-        #     percent_equal = (equal * (point_cls_labels>0)).sum().item() / (point_cls_labels>0).sum().item() * 100.
-        # print("percent correct class:", str(percent_equal)[:5])
 
         one_hot_targets = point_cls_preds.new_zeros(*list(point_cls_labels.shape), self.num_class + 1)
         one_hot_targets.scatter_(-1, (point_cls_labels * (point_cls_labels >= 0).long()).unsqueeze(dim=-1).long(), 1.0)

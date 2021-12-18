@@ -10,7 +10,6 @@ import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 
-import pdb
 def check_numpy_to_torch(x):
     if isinstance(x, np.ndarray):
         return torch.from_numpy(x).float(), True
@@ -188,7 +187,6 @@ def merge_results_dist(result_part, size, tmpdir):
         part_list.append(pickle.load(open(part_file, 'rb')))
 
     ordered_results = []
-    pdb.set_trace()
     for res in zip(*part_list):
         ordered_results.extend(list(res))
     ordered_results = ordered_results[:size]

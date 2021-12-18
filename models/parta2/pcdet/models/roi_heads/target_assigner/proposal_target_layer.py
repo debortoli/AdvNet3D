@@ -4,8 +4,6 @@ import torch.nn as nn
 
 from ....ops.iou3d_nms import iou3d_nms_utils
 
-import pdb
-
 class ProposalTargetLayer(nn.Module):
     def __init__(self, roi_sampler_cfg):
         super().__init__()
@@ -38,7 +36,6 @@ class ProposalTargetLayer(nn.Module):
 
         # classification label
         if self.roi_sampler_cfg.CLS_SCORE_TYPE == 'cls':
-            # print('\nCLS_SCORE_TYPE equals cls, CLS_FG_THRESH: 0.25, CLS_BG_THRESH: 0.05\n')
             batch_cls_labels = (batch_roi_ious > self.roi_sampler_cfg.CLS_FG_THRESH).long()
             ignore_mask = (batch_roi_ious > self.roi_sampler_cfg.CLS_BG_THRESH) & \
                           (batch_roi_ious < self.roi_sampler_cfg.CLS_FG_THRESH)
@@ -56,11 +53,6 @@ class ProposalTargetLayer(nn.Module):
         else:
             raise NotImplementedError
 
-        # print(batch_dict['gt_boxes'])
-        # print(batch_cls_labels)
-        # pdb.set_trace()
-        # print("num batch roi labels > 0.5:", (batch_cls_labels>0.5).float().sum(), "batch roi labels mean:", batch_cls_labels.float().mean())
-        # print("num batch roi scores > 0.5:", (torch.sigmoid(batch_roi_scores)>0.5).sum(), "batch roi scores mean:", torch.sigmoid(batch_roi_scores).mean())
         targets_dict = {'rois': batch_rois, 'gt_of_rois': batch_gt_of_rois, 'gt_iou_of_rois': batch_roi_ious,
                         'roi_scores': batch_roi_scores, 'roi_labels': batch_roi_labels,
                         'reg_valid_mask': reg_valid_mask,
@@ -103,7 +95,6 @@ class ProposalTargetLayer(nn.Module):
             cur_gt = cur_gt.new_zeros((1, cur_gt.shape[1])) if len(cur_gt) == 0 else cur_gt
 
             if self.roi_sampler_cfg.get('SAMPLE_ROI_BY_EACH_CLASS', False):
-                # pdb.set_trace()
                 max_overlaps, gt_assignment = self.get_max_iou_with_same_class(
                     rois=cur_roi, roi_labels=cur_roi_labels,
                     gt_boxes=cur_gt[:, 0:7], gt_labels=cur_gt[:, -1].long()
@@ -113,8 +104,6 @@ class ProposalTargetLayer(nn.Module):
                 max_overlaps, gt_assignment = torch.max(iou3d, dim=1)
 
             sampled_inds = self.subsample_rois(max_overlaps=max_overlaps)
-
-            # print("max_overlaps max:",max_overlaps.max())
 
             batch_rois[index] = cur_roi[sampled_inds]
             batch_roi_labels[index] = cur_roi_labels[sampled_inds]
@@ -140,7 +129,6 @@ class ProposalTargetLayer(nn.Module):
         if fg_num_rois > 0 and bg_num_rois > 0:
             # sampling fg
             fg_rois_per_this_image = min(fg_rois_per_image, fg_num_rois)
-            # print('foreground rois this image:', fg_rois_per_this_image)
 
             rand_num = torch.from_numpy(np.random.permutation(fg_num_rois)).type_as(max_overlaps).long()
             fg_inds = fg_inds[rand_num[:fg_rois_per_this_image]]
@@ -153,7 +141,6 @@ class ProposalTargetLayer(nn.Module):
 
         elif fg_num_rois > 0 and bg_num_rois == 0:
             # sampling fg
-            # print('only foregroudn rois')
             rand_num = np.floor(np.random.rand(self.roi_sampler_cfg.ROI_PER_IMAGE) * fg_num_rois)
             rand_num = torch.from_numpy(rand_num).type_as(max_overlaps).long()
             fg_inds = fg_inds[rand_num]
@@ -161,7 +148,6 @@ class ProposalTargetLayer(nn.Module):
 
         elif bg_num_rois > 0 and fg_num_rois == 0:
             # sampling bg
-            # print('only background rois')
             bg_rois_per_this_image = self.roi_sampler_cfg.ROI_PER_IMAGE
             bg_inds = self.sample_bg_inds(
                 hard_bg_inds, easy_bg_inds, bg_rois_per_this_image, self.roi_sampler_cfg.HARD_BG_RATIO
@@ -227,7 +213,6 @@ class ProposalTargetLayer(nn.Module):
 
         for k in range(gt_labels.min().item(), gt_labels.max().item() + 1):
             roi_mask = (roi_labels == k)
-            # print("actually guessing class",k,":",roi_mask.sum())
             gt_mask = (gt_labels == k)
             if roi_mask.sum() > 0 and gt_mask.sum() > 0:
                 cur_roi = rois[roi_mask]

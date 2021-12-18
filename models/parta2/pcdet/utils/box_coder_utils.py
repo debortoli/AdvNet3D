@@ -1,8 +1,6 @@
 import numpy as np
 import torch
 
-import pdb
-
 class ResidualCoder(object):
     def __init__(self, code_size=7, encode_angle_by_sincos=False, **kwargs):
         super().__init__()
@@ -165,10 +163,6 @@ class PointResidualCoder(object):
         xg, yg, zg, dxg, dyg, dzg, rg, *cgs = torch.split(gt_boxes, 1, dim=-1)
         xa, ya, za = torch.split(points, 1, dim=-1)
         if self.use_mean_size:
-            try:
-                assert gt_classes.max() <= self.mean_size.shape[0]
-            except:
-                pdb.set_trace()
             point_anchor_size = self.mean_size[gt_classes - 1]
             dxa, dya, dza = torch.split(point_anchor_size, 1, dim=-1)
             diagonal = torch.sqrt(dxa ** 2 + dya ** 2)

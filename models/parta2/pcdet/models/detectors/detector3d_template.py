@@ -9,7 +9,6 @@ from ..backbones_2d import map_to_bev
 from ..backbones_3d import pfe, vfe
 from ..model_utils import model_nms_utils
 
-import pdb
 
 class Detector3DTemplate(nn.Module):
     def __init__(self, model_cfg, num_class, dataset):
@@ -55,7 +54,7 @@ class Detector3DTemplate(nn.Module):
 
     def build_adversarial_discriminator(self, model_info_dict):
         '''
-        Added by bob, used for adversarial training
+        Used for adversarial training
         '''
         backbone_3d_module = backbones_3d.__all__['AdversarialDiscriminator'](
             model_cfg=self.model_cfg.BACKBONE_3D,

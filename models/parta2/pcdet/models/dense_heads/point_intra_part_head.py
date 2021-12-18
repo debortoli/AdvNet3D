@@ -3,7 +3,6 @@ import torch
 from ...utils import box_coder_utils, box_utils
 from .point_head_template import PointHeadTemplate
 
-import pdb
 
 class PointIntraPartOffsetHead(PointHeadTemplate):
     """
@@ -106,8 +105,6 @@ class PointIntraPartOffsetHead(PointHeadTemplate):
 
         point_cls_scores = torch.sigmoid(point_cls_preds)
         point_part_offset = torch.sigmoid(point_part_preds)
-        # bob: here classification is taken as max
-        # pdb.set_trace()
         batch_dict['point_cls_scores_raw'] = point_cls_scores
         batch_dict['point_cls_scores'], _ = point_cls_scores.max(dim=-1)
         batch_dict['point_part_offset'] = point_part_offset
@@ -117,8 +114,6 @@ class PointIntraPartOffsetHead(PointHeadTemplate):
             ret_dict['point_cls_labels'] = targets_dict['point_cls_labels']
             ret_dict['point_part_labels'] = targets_dict.get('point_part_labels')
             ret_dict['point_box_labels'] = targets_dict.get('point_box_labels')
-            # bob: point_cls_labels/point_box_labels should not be all 0s if we only 
-            # sample clouds with objects
         
         if self.box_layers is not None and (not self.training or self.predict_boxes_when_training):
             point_cls_preds, point_box_preds = self.generate_predicted_boxes(

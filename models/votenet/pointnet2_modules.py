@@ -21,6 +21,8 @@ sys.path.append(BASE_DIR)
 import pointnet2_utils
 import pytorch_utils as pt_utils
 from typing import List
+import time
+import numpy as np
 
 
 class _PointnetSAModuleBase(nn.Module):
@@ -160,7 +162,6 @@ class PointnetSAModule(PointnetSAModuleMSG):
             use_xyz=use_xyz
         )
 
-
 class PointnetSAModuleVotes(nn.Module):
     ''' Modified based on _PointnetSAModuleBase and PointnetSAModuleMSG
     with extra support for returning point indices for getting their GT votes '''
@@ -178,7 +179,9 @@ class PointnetSAModuleVotes(nn.Module):
             sigma: float = None, # for RBF pooling
             normalize_xyz: bool = False, # noramlize local XYZ with radius
             sample_uniformly: bool = False,
-            ret_unique_cnt: bool = False
+            ret_unique_cnt: bool = False,
+            in_discriminator = False,
+            sample_strat = 'fps'
     ):
         super().__init__()
 
@@ -193,6 +196,7 @@ class PointnetSAModuleVotes(nn.Module):
             self.sigma = self.radius/2
         self.normalize_xyz = normalize_xyz
         self.ret_unique_cnt = ret_unique_cnt
+        self.sample_strat = sample_strat
 
         if npoint is not None:
             self.grouper = pointnet2_utils.QueryAndGroup(radius, nsample,
@@ -205,6 +209,14 @@ class PointnetSAModuleVotes(nn.Module):
         if use_xyz and len(mlp_spec)>0:
             mlp_spec[0] += 3
         self.mlp_module = pt_utils.SharedMLP(mlp_spec, bn=bn)
+
+        #pointconv
+        if self.pooling == 'pointconv':
+            self.weightnet = pt_utils.SharedMLP([3, 8, 8], bn = True)
+            self.linear = pt_utils.Conv2d(8 * mlp_spec[-1], mlp_spec[-1], bn = bn)
+
+        self.in_discriminator = in_discriminator
+        self.cpl_upsample = torch.nn.Upsample(self.npoint)
 
 
     def forward(self, xyz: torch.Tensor,
@@ -231,13 +243,14 @@ class PointnetSAModuleVotes(nn.Module):
         """
 
         xyz_flipped = xyz.transpose(1, 2).contiguous()
-        if inds is None:
+        if (self.sample_strat == 'fps' and inds is None):
             inds = pointnet2_utils.furthest_point_sample(xyz, self.npoint)
+
+        if (self.sample_strat == 'cpl' and inds is None):
+            inds = self.critical_points_layer(xyz, features)
         else:
             assert(inds.shape[1] == self.npoint)
-        new_xyz = pointnet2_utils.gather_operation(
-            xyz_flipped, inds
-        ).transpose(1, 2).contiguous() if self.npoint is not None else None
+        new_xyz = pointnet2_utils.gather_operation(xyz_flipped, inds        ).transpose(1, 2).contiguous() if self.npoint is not None else None
 
         if not self.ret_unique_cnt:
             grouped_features, grouped_xyz = self.grouper(
@@ -248,9 +261,8 @@ class PointnetSAModuleVotes(nn.Module):
                 xyz, new_xyz, features
             )  # (B, C, npoint, nsample), (B,3,npoint,nsample), (B,npoint)
 
-        new_features = self.mlp_module(
-            grouped_features
-        )  # (B, mlp[-1], npoint, nsample)
+        new_features = self.mlp_module(grouped_features)  # (B, mlp[-1], npoint, nsample)
+        
         if self.pooling == 'max':
             new_features = F.max_pool2d(
                 new_features, kernel_size=[1, new_features.size(3)]
@@ -264,12 +276,74 @@ class PointnetSAModuleVotes(nn.Module):
             # Ref: https://en.wikipedia.org/wiki/Radial_basis_function_kernel
             rbf = torch.exp(-1 * grouped_xyz.pow(2).sum(1,keepdim=False) / (self.sigma**2) / 2) # (B, npoint, nsample)
             new_features = torch.sum(new_features * rbf.unsqueeze(1), -1, keepdim=True) / float(self.nsample) # (B, mlp[-1], npoint, 1)
+        elif self.pooling == 'pointconv':
+            # use pointconv to aggregate feature
+            B, C_in, N, _ = new_features.shape
+            weights = self.weightnet(grouped_xyz) # (B, C_mid=8, npoint, nsample)
+            _, C_mid, _, _ = weights.shape
+            new_features = torch.matmul(input=new_features.permute(0, 2, 1, 3), other = weights.permute(0, 2, 3, 1)).view(B, N, C_in*C_mid, 1)
+            new_features = new_features.permute(0, 2, 1, 3) #(B, C_in*C_mid, N, 1)
+            new_features = self.linear(new_features) #(B, mlp[-1], N, 1)
+
         new_features = new_features.squeeze(-1)  # (B, mlp[-1], npoint)
 
         if not self.ret_unique_cnt:
             return new_xyz, new_features, inds
         else:
             return new_xyz, new_features, inds, unique_cnt
+
+    def critical_points_layer(self, xyz, features):
+        '''
+        Implementing Adaptive Hierarchical Down-Sampling for Point Cloud
+        Classification paper
+
+        Input:
+            features: (N, #features, feature_vec_size)
+            self.npoint: how many points to subsample to
+
+        Output:
+            inds: indices to subsample from original (N, npoint) 
+        '''
+
+        xyz_upsample = True # dont just upsample by repeating features, also upsample in space
+        fmax, idx = torch.max(features, dim=1)
+        batch_inds = torch.Tensor([])
+
+        # must loop over every element in batch because torch.unique
+        # will try to preserve a consistent matrix shape otherwise resulting in weird 
+        # artifacts
+        zero_tensor = torch.zeros(1).cuda()
+        for i in range(features.shape[0]):
+            batch_elem = idx[i]
+            fmax_elem = fmax[i]
+            uidx = torch.unique(batch_elem)
+            # todo: make faster
+            fs = []
+            for elem in uidx:
+                fs.append(torch.where(batch_elem == elem, fmax_elem, zero_tensor).sum())
+            
+            fs = torch.Tensor(fs).int().cuda()
+            fs, indices = torch.sort(fs)
+            suidx = uidx[indices]
+            
+            if len(batch_inds) == 0:
+                if xyz_upsample:
+                    suidx = pointnet2_utils.ball_query(1,int(self.npoint/suidx.shape[0]), xyz[i:i+1],xyz[i:i+1,suidx.long()])[0].flatten()
+                    ######### CANT USE TORCH.UNIQUE BECAUSE IT SORTS AND THEREFORE VIOLATES THE ASSUMPTION 
+                    ######### THE ALGO IS PERMUATION-INVARIANT
+                batch_inds = self.cpl_upsample(suidx.reshape(1,1,suidx.shape[0]).float())[0][0].unsqueeze(0).int()
+            else:
+                if xyz_upsample:
+                    suidx = pointnet2_utils.ball_query(1,int(self.npoint/suidx.shape[0]),\
+                                                       xyz[i:i+1],xyz[i:i+1,suidx.long()])[0].flatten()
+                    ######### CANT USE TORCH.UNIQUE BECAUSE IT SORTS AND THEREFORE VIOLATES THE ASSUMPTION 
+                    ######### THE ALGO IS PERMUATION-INVARIANT
+                batch_inds = torch.cat((batch_inds, \
+                                self.cpl_upsample(suidx.reshape(1,1,suidx.shape[0]).float())[0][0].unsqueeze(0).int())) 
+        return batch_inds
+
+
+
 
 class PointnetSAModuleMSGVotes(nn.Module):
     ''' Modified based on _PointnetSAModuleBase and PointnetSAModuleMSG
@@ -414,6 +488,113 @@ class PointnetFPModule(nn.Module):
         new_features = self.mlp(new_features)
 
         return new_features.squeeze(-1)
+
+class PointconvFPModule(nn.Module):
+    r"""Propigates the features of one set to another
+
+    Parameters
+    ----------
+    mlp : list
+        Pointconv module parameters
+    bn : bool
+        Use batchnorm
+    """
+
+    def __init__(
+            self, 
+            *, 
+            mlp: List[int], 
+            radius: float = None,
+            nsample: int = None,
+            bn: bool = True,
+            use_xyz: bool = True,
+            normalize_xyz: bool = False,
+            sample_uniformly: bool = False,
+            ret_unique_cnt: bool = False):
+        super().__init__()
+        self.mlp = pt_utils.SharedMLP(mlp, bn=bn)
+        self.radius = radius
+        self.nsample = nsample
+        self.use_xyz = use_xyz
+        self.normalize_xyz = normalize_xyz
+        self.ret_unique_cnt = ret_unique_cnt
+
+        self.grouper = pointnet2_utils.QueryAndGroup(radius, nsample,
+                use_xyz=use_xyz, ret_grouped_xyz=True, normalize_xyz=normalize_xyz,
+                sample_uniformly=sample_uniformly, ret_unique_cnt=ret_unique_cnt)
+
+        #pointconv
+        self.weightnet = pt_utils.SharedMLP([3, 8, 8], bn = True)
+        if self.use_xyz:
+            self.linear = pt_utils.Conv2d(8 * (mlp[-1] + 3), mlp[-1], bn = bn)
+        else:
+            self.linear = pt_utils.Conv2d(8 * mlp[-1], mlp[-1], bn = bn)
+
+    def forward(
+            self, unknown: torch.Tensor, known: torch.Tensor,
+            unknow_feats: torch.Tensor, known_feats: torch.Tensor
+    ) -> torch.Tensor:
+        r"""
+        Parameters
+        ----------
+        unknown : torch.Tensor
+            (B, n, 3) tensor of the xyz positions of the unknown features
+        known : torch.Tensor
+            (B, m, 3) tensor of the xyz positions of the known features
+        unknow_feats : torch.Tensor
+            (B, C1, n) tensor of the features to be propigated to
+        known_feats : torch.Tensor
+            (B, C2, m) tensor of features to be propigated
+
+        Returns
+        -------
+        new_features : torch.Tensor
+            (B, mlp[-1], n) tensor of the features of the unknown features
+        """
+
+        if known is not None:
+            dist, idx = pointnet2_utils.three_nn(unknown, known)
+            dist_recip = 1.0 / (dist + 1e-8)
+            norm = torch.sum(dist_recip, dim=2, keepdim=True)
+            weight = dist_recip / norm
+
+            interpolated_feats = pointnet2_utils.three_interpolate(
+                known_feats, idx, weight
+            )
+        else:
+            interpolated_feats = known_feats.expand(
+                *known_feats.size()[0:2], unknown.size(1)
+            )
+
+        if unknow_feats is not None:
+            new_features = torch.cat([interpolated_feats, unknow_feats],
+                                   dim=1)  #(B, C2 + C1, n)
+        else:
+            new_features = interpolated_feats
+
+        new_features = new_features.unsqueeze(-1)
+        new_features = self.mlp(new_features).squeeze(-1)
+
+        if not self.ret_unique_cnt:
+            grouped_features, grouped_xyz = self.grouper(
+                unknown, unknown, new_features
+            )  # (B, C, npoint, nsample)
+        else:
+            grouped_features, grouped_xyz, _ = self.grouper(
+                unknown, unknown, new_features
+            )  # (B, C, npoint, nsample), (B,3,npoint,nsample), (B,npoint)
+
+        # use pointconv to aggregate feature
+        new_features = grouped_features
+        B, C_in, N, _ = new_features.shape
+        weights = self.weightnet(grouped_xyz) # (B, C_mid=8, npoint, nsample)
+        _, C_mid, _, _ = weights.shape
+        new_features = torch.matmul(input=new_features.permute(0, 2, 1, 3), other = weights.permute(0, 2, 3, 1)).view(B, N, C_in*C_mid, 1)
+        new_features = new_features.permute(0, 2, 1, 3) #(B, C_in*C_mid, N, 1)
+        new_features = self.linear(new_features) #(B, mlp[-1], N, 1)
+
+        return new_features.squeeze(-1)
+
 
 class PointnetLFPModuleMSG(nn.Module):
     ''' Modified based on _PointnetSAModuleBase and PointnetSAModuleMSG

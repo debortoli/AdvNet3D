@@ -17,7 +17,6 @@ sys.path.append(os.path.join(ROOT_DIR, 'utils'))
 sys.path.append(os.path.join(ROOT_DIR, 'pointnet2'))
 
 from pointnet2_modules import PointnetSAModuleVotes
-import pdb
 from backbone_module_utils import get_sa_layers, GradReverseLayer
 
 class Pointnet2Backbone(nn.Module):
@@ -50,7 +49,6 @@ class Pointnet2Backbone(nn.Module):
                 
                 if self.use_adversarial_discriminator:
                     print('adversarial discriminator not setup for this network size')
-                    pdb.set_trace()
 
             else:
                 self.sa1, self.sa2, self.sa3, self.sa4, self.fp1, self.fp2, self.pointdan_enc = \
@@ -58,7 +56,6 @@ class Pointnet2Backbone(nn.Module):
 
         elif self.use_adversarial_discriminator:
             print('adversarial discriminator not setup for this backbone type')
-            pdb.set_trace()
 
         self.network_size = network_size
         self.frozen = False

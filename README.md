@@ -24,9 +24,9 @@ If you want to just use our models the following files are relevant:
 Our code using the PartA2 network is heavily based on the PartA2 repo: https://github.com/open-mmlab/OpenPCDet. Please refer to this repo for details on licenses and general structure of the codebase.  
 
 If you want to just use our models the following files are relevant:
-* `models/OpenPCDet/pcdet/models/backbones_3d/spconv_unet.py` has our adversarial discriminator model
-* `models/OpenPCDet/pcdet/models/detectors/PartA2_net.py` has training loss computations
-* `models/OpenPCDet/tools/cfgs/subt_models/PartA2_net_free_subt.yaml` has our overall dataset config. 
+* `models/parta2/pcdet/models/backbones_3d/spconv_unet.py` has our adversarial discriminator model
+* `models/parta2/pcdet/models/detectors/PartA2_net.py` has training loss computations
+* `models/parta2/tools/cfgs/subt_models/PartA2_net_free_subt.yaml` has our overall dataset config. 
 
 many other aspects outside of these files are very similar to the original repo.
 

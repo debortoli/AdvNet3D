@@ -1,6 +1,5 @@
 from .detector3d_template import Detector3DTemplate
 
-import pdb
 import numpy as np
 import torch
 
@@ -48,15 +47,9 @@ class PartA2Net(Detector3DTemplate):
                 loss_adv, loss_adv_ew = self.get_emd_loss(tb_dict, adv_lambda_weighting)
             else:
                 loss_adv, loss_adv_ew = 0, 0
-            #print(loss_adv)
+
             loss =  loss_point + loss_rcnn + loss_adv
             loss_ew = loss_point_ew + loss_rcnn_ew  #+ loss_adv_ew
-            
-            diff = abs(loss.item() - loss_ew.sum())
-            if (np.round(loss.item(),3)*0.05 > 0) and (np.round(loss.item(),3)*0.05 < diff):
-                print('Batchwise computation seems to have broken')
-                #pdb.set_trace()
-
         tb_dict['total_loss'] = loss
 
         return loss, loss_ew, tb_dict, disp_dict
@@ -82,7 +75,6 @@ class PartA2Net(Detector3DTemplate):
         m = torch.nn.Sigmoid()
         out_real = m(self.init_batch_dict['adv_classification_output'][real_inds]).mean()
         out_syn = m(self.init_batch_dict['adv_classification_output'][syn_inds]).mean()
-        #print(out_real - out_syn)
         loss = (out_real - out_syn) * adv_lambda_weighting
         tb_dict['loss_adv'] = loss.item()
         return loss, torch.zeros_like(self.init_batch_dict['data_type']).cuda()

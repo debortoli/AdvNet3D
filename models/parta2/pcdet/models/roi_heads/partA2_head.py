@@ -6,8 +6,6 @@ import torch.nn as nn
 from ...ops.roiaware_pool3d import roiaware_pool3d_utils
 from .roi_head_template import RoIHeadTemplate
 
-import pdb
-
 class PartA2FCHead(RoIHeadTemplate):
     def __init__(self, input_channels, model_cfg, num_class=1):
         super().__init__(num_class=num_class, model_cfg=model_cfg)
@@ -173,9 +171,6 @@ class PartA2FCHead(RoIHeadTemplate):
             batch_dict, nms_config=self.model_cfg.NMS_CONFIG['TRAIN' if self.training else 'TEST']
         )
         if self.training:
-            # bob: targets_dict gets overwritten here...probably taking with it the proposed boxes
-            # this seems a little weird that we're overwriting the batch_dict with target rois
-            # actually, may be ok, not actually the target i dont think
             targets_dict = self.assign_targets(batch_dict)
             batch_dict['rois'] = targets_dict['rois']
             batch_dict['roi_labels'] = targets_dict['roi_labels']
@@ -213,10 +208,6 @@ class PartA2FCHead(RoIHeadTemplate):
 
         rcnn_cls = self.cls_layers(shared_feature).transpose(1, 2).contiguous().squeeze(dim=1)  # (B, 1 or 2)
         rcnn_reg = self.reg_layers(shared_feature).transpose(1, 2).contiguous().squeeze(dim=1)  # (B, C)
-
-        # bob put this in to be able to track the raw output properly
-        # batch_dict['rcnn_cls_raw'] = rcnn_cls
-        # batch_dict['rcnn_reg_raw'] = rcnn_reg
 
         if not self.training:
             batch_cls_preds, batch_box_preds = self.generate_predicted_boxes(

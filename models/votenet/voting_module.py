@@ -12,7 +12,6 @@ Author: Charles R. Qi and Or Litany
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import pdb
 
 class VotingModule(nn.Module):
     def __init__(self, vote_factor, seed_feature_dim):

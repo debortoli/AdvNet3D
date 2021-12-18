@@ -20,8 +20,6 @@ from backbone_module import Pointnet2Backbone, PointconvBackbone
 from voting_module import VotingModule
 from proposal_module import ProposalModule
 from adv_class_module import AdvClassDiscriminator
-from loss_helper import get_loss, calc_gradient_penalty
-import pdb
 import math
 
 
@@ -83,7 +81,6 @@ class VoteNet(nn.Module):
         elif backbone_network == 'pointconv':
             if self.use_adversarial_discriminator:
                 print('Adversarial discriminator not implemented yet for this')
-                pdb.set_trace()
             self.backbone_net = PointconvBackbone(self.input_feature_dim)
 
         # Hough voting
@@ -142,7 +139,7 @@ class VoteNet(nn.Module):
 
     def update_using_adv_discriminator(self, value):
         '''
-        Adversarial discriminator to be value.
+        Adversarial discriminator to be value (bool).
         Update network to accompany this change
         '''
         self.use_adversarial_discriminator = value

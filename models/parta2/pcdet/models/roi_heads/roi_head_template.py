@@ -7,7 +7,6 @@ from ...utils import box_coder_utils, common_utils, loss_utils
 from ..model_utils.model_nms_utils import class_agnostic_nms
 from .target_assigner.proposal_target_layer import ProposalTargetLayer
 
-import pdb
 class RoIHeadTemplate(nn.Module):
     def __init__(self, num_class, model_cfg):
         super().__init__()
@@ -77,9 +76,6 @@ class RoIHeadTemplate(nn.Module):
                 batch_mask = index
             box_preds = batch_box_preds[batch_mask]
             cls_preds = batch_cls_preds[batch_mask]
-
-            if len(cls_preds) == 0:
-                continue
             cur_roi_scores, cur_roi_labels = torch.max(cls_preds, dim=1)
             
             if nms_config.MULTI_CLASSES_NMS:
@@ -95,8 +91,7 @@ class RoIHeadTemplate(nn.Module):
 
         batch_dict['rois'] = rois
         batch_dict['roi_scores'] = roi_scores
-        # print('classes+=1 not happening to match what subt pipeline expects')
-        batch_dict['roi_labels'] = roi_labels # + 1 bob put this in to match subt data
+        batch_dict['roi_labels'] = roi_labels # + 1 put this in to match subt data
         batch_dict['has_class_labels'] = True if batch_cls_preds.shape[-1] > 1 else False
         batch_dict.pop('batch_index', None)
         return batch_dict
@@ -176,7 +171,6 @@ class RoIHeadTemplate(nn.Module):
             rcnn_loss_reg = rcnn_loss_reg * loss_cfgs.LOSS_WEIGHTS['rcnn_reg_weight']
             rcnn_loss_reg_ew = rcnn_loss_reg_ew * loss_cfgs.LOSS_WEIGHTS['rcnn_reg_weight']
             tb_dict['rcnn_loss_reg'] = rcnn_loss_reg.item()
-            # print("foreground sum for rcnn_loss_reg:", fg_sum)
 
             if loss_cfgs.CORNER_LOSS_REGULARIZATION and fg_sum > 0:
                 # TODO: NEED to BE CHECK
@@ -188,7 +182,6 @@ class RoIHeadTemplate(nn.Module):
                             loss_corner_ew = torch.zeros(1).to(partial_fg_mask.device)
                         else:
                             loss_corner_ew = torch.cat((loss_corner_ew, (torch.zeros(1).to(partial_fg_mask.device)).reshape(1)))
-
                         continue
                     partial_rb_size = int(rcnn_batch_size / gt_boxes3d_ct.shape[0])
                     fg_rcnn_reg = rcnn_reg[ind0:ind1].view(partial_rb_size, -1)[partial_fg_mask]
@@ -230,13 +223,6 @@ class RoIHeadTemplate(nn.Module):
         else:
             raise NotImplementedError
 
-        for element in rcnn_loss_reg_ew:
-            if torch.isnan(element):
-                pdb.set_trace()
-
-        if np.round(rcnn_loss_reg.item(),3) != np.round(rcnn_loss_reg_ew.sum().item(),3):
-            pdb.set_trace()
-
         return rcnn_loss_reg, rcnn_loss_reg_ew, tb_dict
 
     def get_box_cls_layer_loss(self, forward_ret_dict, num_voxels_per_example):
@@ -247,12 +233,7 @@ class RoIHeadTemplate(nn.Module):
             rcnn_cls_flat = rcnn_cls.view(-1)
             batch_loss_cls = F.binary_cross_entropy(torch.sigmoid(rcnn_cls_flat), rcnn_cls_labels.float(), reduction='none')
             cls_valid_mask = (rcnn_cls_labels >= 0).float()
-            rcnn_loss_cls = (batch_loss_cls * cls_valid_mask).sum() / torch.clamp(cls_valid_mask.sum(), min=1.0)
-
-            # is 0, pred 0
-            # cls_valid_mask = torch.where(rcnn_cls_labels == 0, cls_valid_mask*0.01, cls_valid_mask)
-            # rcnn_loss_cls = (batch_loss_cls * cls_valid_mask).sum() / torch.clamp((cls_valid_mask>0).sum(), min=1.0) * 10
-            
+            rcnn_loss_cls = (batch_loss_cls * cls_valid_mask).sum() / torch.clamp(cls_valid_mask.sum(), min=1.0)            
 
         elif loss_cfgs.CLS_LOSS == 'CrossEntropy':
             batch_loss_cls = F.cross_entropy(rcnn_cls, rcnn_cls_labels, reduction='none', ignore_index=-1)
@@ -282,8 +263,6 @@ class RoIHeadTemplate(nn.Module):
 
         tb_dict = {'rcnn_loss_cls': rcnn_loss_cls.item()}
 
-        if np.round(rcnn_loss_cls.item(),3) != np.round(rcnn_loss_cls_ew.sum().item(),3):
-            pdb.set_trace()
 
         return rcnn_loss_cls, rcnn_loss_cls_ew, tb_dict
 
@@ -292,9 +271,6 @@ class RoIHeadTemplate(nn.Module):
         rcnn_loss = 0
         rcnn_loss_ew = torch.zeros((num_voxels_per_example.shape[0])).to(num_voxels_per_example.device)
         rcnn_loss_cls, rcnn_loss_cls_ew, cls_tb_dict = self.get_box_cls_layer_loss(self.forward_ret_dict, num_voxels_per_example)
-        for element in rcnn_loss_cls_ew:
-            if torch.isnan(element):
-                pdb.set_trace()
         rcnn_loss += rcnn_loss_cls
         rcnn_loss_ew += rcnn_loss_cls_ew
         tb_dict.update(cls_tb_dict)
@@ -302,18 +278,12 @@ class RoIHeadTemplate(nn.Module):
         
 
         rcnn_loss_reg, rcnn_loss_reg_ew, reg_tb_dict = self.get_box_reg_layer_loss(self.forward_ret_dict)
-        for element in rcnn_loss_reg_ew:
-            if torch.isnan(element):
-                pdb.set_trace()
         rcnn_loss += rcnn_loss_reg
         rcnn_loss_ew += rcnn_loss_reg_ew
         tb_dict.update(reg_tb_dict)
         tb_dict['rcnn_loss'] = rcnn_loss.item()
 
 
-        for element in rcnn_loss_ew:
-            if torch.isnan(element):
-                pdb.set_trace()
 
         return rcnn_loss, rcnn_loss_ew, tb_dict
 

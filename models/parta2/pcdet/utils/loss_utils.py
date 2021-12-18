@@ -4,8 +4,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from . import box_utils
-
-import pdb
 class SigmoidFocalClassificationLoss(nn.Module):
     """
     Sigmoid focal cross entropy loss.

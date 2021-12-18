@@ -1,8 +1,5 @@
 CLASS_NAMES: ['backpack', 'drill', 'fire ext', 'survivor']
 
-# DATA_CONFIG:
-#    _BASE_CONFIG_: cfgs/dataset_configs/kitti_dataset.yaml
-
 
 MODEL:
     NAME: PointRCNN
@@ -48,12 +45,6 @@ MODEL:
                 'point_part_weight': 1.0,
                 'code_weights': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
             }
-            # LOSS_WEIGHTS: {
-            #     'point_cls_weight': 1.0,
-            #     'point_box_weight': 1.0,
-            #     'point_part_weight': 1.0,
-            #     'code_weights': [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-            # }
 
     ROI_HEAD:
         NAME: PartA2FCHead
@@ -81,10 +72,6 @@ MODEL:
                 NMS_THRESH: 0.85
 
         ROI_AWARE_POOL:
-            # POOL_SIZE: 12
-            # NUM_FEATURES: 128
-            # MAX_POINTS_PER_VOXEL: 128
-
             POOL_SIZE: 20
             NUM_FEATURES: 64
             MAX_POINTS_PER_VOXEL: 128
@@ -101,22 +88,15 @@ MODEL:
             # what more smooth for the iou of overlap in between bg and fg
             # (called roi_iou)
             CLS_SCORE_TYPE: roi_iou
-
-            # CLS_FG_THRESH: 0.75
-            # CLS_BG_THRESH: 0.25
-
             CLS_FG_THRESH: 0.25
             CLS_BG_THRESH: 0.15
 
             # upper bound for easily-detected background examples
-            # CLS_BG_THRESH_LO: 0.1
             CLS_BG_THRESH_LO: 0.05
             # how much of the background that we sample should be difficult
-            # HARD_BG_RATIO: 0.8
             HARD_BG_RATIO: 0.8
 
             # regression foreground lower threshold
-            # REG_FG_THRESH: 0.65
             REG_FG_THRESH: 0.25
 
         LOSS_CONFIG:

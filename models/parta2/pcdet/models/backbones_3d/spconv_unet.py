@@ -8,8 +8,6 @@ import torch.nn as nn
 from ...utils import common_utils
 from .spconv_backbone import post_act_block
 
-import pdb
-
 class SparseBasicBlock(spconv.SparseModule):
     expansion = 1
 
@@ -61,7 +59,7 @@ class UNetV2(nn.Module):
         self.voxel_size = voxel_size
         self.point_cloud_range = point_cloud_range
 
-        norm_fn = partial(nn.BatchNorm1d, eps=1e-3, momentum=0.01)# momentum=0.01)
+        norm_fn = partial(nn.BatchNorm1d, eps=1e-3, momentum=0.01)
 
         self.conv_input = spconv.SparseSequential(
             spconv.SubMConv3d(input_channels, 16, 3, padding=1, bias=False, indice_key='subm1'),
@@ -187,13 +185,7 @@ class UNetV2(nn.Module):
         x_conv4 = self.conv4(x_conv3)
 
         if self.conv_out is not None:
-            # for detection head
-            # [200, 176, 5] -> [200, 176, 2]
-            # print('--------------')
-            # print(x_conv4.features)
-            # out = self.conv_out(x_conv4)
-            # print(out.features)
-            batch_dict['encoded_spconv_tensor'] = x_conv3 #out
+            batch_dict['encoded_spconv_tensor'] = x_conv3 
             batch_dict['encoded_spconv_tensor_stride'] = 8
 
         # for segmentation head
@@ -216,9 +208,9 @@ class UNetV2(nn.Module):
 
 
 class AdversarialDiscriminator(nn.Module):
-    """
-    Added by bob. For adversarial training
-    """
+    '''
+    Adversarial discriminator for sparse voxel based architectures
+    '''
     def __init__(self, model_cfg, input_channels, grid_size, voxel_size, point_cloud_range, **kwargs):
         super().__init__()
         self.model_cfg = model_cfg
@@ -226,7 +218,7 @@ class AdversarialDiscriminator(nn.Module):
         self.voxel_size = voxel_size
         self.point_cloud_range = point_cloud_range
 
-        norm_fn = partial(nn.BatchNorm1d, eps=1e-3, momentum=0.01)# momentum=0.01)
+        norm_fn = partial(nn.BatchNorm1d, eps=1e-3, momentum=0.01)
 
         self.conv_input = spconv.SparseSequential(
             spconv.SubMConv3d(input_channels, 16, 3, padding=1, bias=False, indice_key='subm1'),
@@ -305,9 +297,6 @@ class AdversarialDiscriminator(nn.Module):
                 batch_dict['adv_classification_output'] = self.fc1(example_x)
             else:
                 batch_dict['adv_classification_output'] = torch.cat((batch_dict['adv_classification_output'], self.fc1(example_x)))
-            if (torch.isnan(batch_dict['adv_classification_output'].min())):
-                pdb.set_trace()
-
         return batch_dict
 
 
